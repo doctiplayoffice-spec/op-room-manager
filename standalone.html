@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurgiTrack - Bloc Intelligent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "recharts": "https://esm.sh/recharts@2.12.0?external=react,react-dom",
+            "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react",
+            "@google/genai": "https://esm.sh/@google/genai@0.1.0"
+        }
+    }
+    </script>
+</head>
+
+<body class="bg-slate-50 text-slate-900 overflow-hidden h-screen">
+    <div id="root" class="h-full"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import {
+            Layout, Activity, Calendar, BarChart3, Clock, CheckCircle, AlertCircle, PlayCircle,
+            Play, DoorOpen, Scissors, ListChecks, ShieldCheck, CheckSquare, Square,
+            Mic, MicOff, Sparkles, Loader2, AlertTriangle
+        } from 'lucide-react';
+        import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+        import { GoogleGenAI } from '@google/genai';
+
+        // --- TYPES ---
+        const SurgeryStatus = {
+            SCHEDULED: 'PROGRAMMÉ',
+            PREPARING: 'PRÉPARATION',
+            IN_PROGRESS: 'EN COURS',
+            CLOSING: 'SUTURE / FERMETURE',
+            CLEANING: 'NETTOYAGE',
+            COMPLETED: 'TERMINÉ',
+            DELAYED: 'EN RETARD'
+        };
+
+        const StaffRole = {
+            SURGEON: 'Chirurgien',
+            ANESTHESIOLOGIST: 'Anesthésiste',
+            IBODE: 'IBODE',
+            IADE: 'IADE'
+        };
+
+        const EventType = {
+            PATIENT_ENTRY: 'Entrée Patient',
+            ANESTHESIA_INDUCTION: 'Induction Anesthésique',
+            INCISION: 'Incision',
+            KEY_GESTURE: 'Geste Opératoire Clé',
+            CLOSURE: 'Fermeture',
+            PATIENT_EXIT: 'Sortie de Salle'
+        };
+
+        const ChecklistPhases = {
+            BEFORE_INDUCTION: 'Avant Induction',
+            BEFORE_INCISION: 'Time-Out (Avant Incision)',
+            BEFORE_EXIT: 'Avant Sortie de Salle'
+        };
+
+        // --- DATA ---
+        const STAFF = [
+            { id: 's1', name: 'Dr. Hachem Sayegh', role: StaffRole.SURGEON, specialty: 'Orthopédie' },
+            { id: 's2', name: 'Dr. Marie Curie', role: StaffRole.SURGEON, specialty: 'Neurochirurgie' },
+            { id: 's3', name: 'Dr. Alain Prost', role: StaffRole.SURGEON, specialty: 'Cardiologie' },
+            { id: 's4', name: 'Dr. Sarah Connor', role: StaffRole.SURGEON, specialty: 'Ophtalmologie' },
+            { id: 's5', name: 'Dr. Gregory House', role: StaffRole.SURGEON, specialty: 'Diagnostic' },
+            { id: 'a1', name: 'Dr. Luc Besson', role: StaffRole.ANESTHESIOLOGIST },
+            { id: 'a2', name: 'Dr. Claire Redfield', role: StaffRole.ANESTHESIOLOGIST },
+            { id: 'n1', name: 'Julie Martin', role: StaffRole.IBODE },
+            { id: 'n2', name: 'Thomas Bernard', role: StaffRole.IADE },
+            { id: 'n3', name: 'Lara Croft', role: StaffRole.IBODE },
+            { id: 'n4', name: 'Leon Kennedy', role: StaffRole.IADE }
+        ];
+
+        const DEFAULT_CHECKLIST = [
+            { id: 'c1', label: 'Identité patient vérifiée', checked: true, phase: 'BEFORE_INDUCTION' },
+            { id: 'c2', label: 'Site opératoire marqué', checked: true, phase: 'BEFORE_INDUCTION' },
+            { id: 'c3', label: 'Vérification matériel anesthésie', checked: true, phase: 'BEFORE_INDUCTION' },
+            { id: 'c4', label: 'Confirmation identité et site par l\'équipe', checked: false, phase: 'BEFORE_INCISION' },
+            { id: 'c5', label: 'Antibioprophylaxie faite <60min', checked: false, phase: 'BEFORE_INCISION' },
+            { id: 'c6', label: 'Comptage final compresses/aiguilles', checked: false, phase: 'BEFORE_EXIT' },
+            { id: 'c7', label: 'Étiquetage des échantillons', checked: false, phase: 'BEFORE_EXIT' },
+        ];
+
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        const createDate = (baseDate, hours, minutes = 0) => {
+            const d = new Date(baseDate);
+            d.setHours(hours, minutes, 0, 0);
+            return d;
+        };
+
+        const INITIAL_SURGERIES = [
+            {
+                id: 'op-101',
+                patientId: 'PT-8821',
+                procedureName: 'Arthroplastie Totale de Hanche',
+                roomNumber: 1,
+                status: SurgeryStatus.IN_PROGRESS,
+                start: createDate(today, 8, 30),
+                end: createDate(today, 10, 30),
+                surgeon: STAFF[0],
+                anesthesiologist: STAFF[5],
+                events: [
+                    { type: EventType.PATIENT_ENTRY, time: createDate(today, 8, 45), user: 'Julie Martin' },
+                    { type: EventType.ANESTHESIA_INDUCTION, time: createDate(today, 9, 0), user: 'Thomas Bernard' },
+                    { type: EventType.INCISION, time: createDate(today, 9, 20), user: 'Dr. Sayegh' }
+                ],
+                checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST))
+            },
+            {
+                id: 'op-102',
+                patientId: 'PT-4432',
+                procedureName: 'Craniotomie',
+                roomNumber: 2,
+                status: SurgeryStatus.SCHEDULED,
+                start: createDate(today, 13, 0),
+                end: createDate(today, 17, 0),
+                surgeon: STAFF[1],
+                anesthesiologist: STAFF[5],
+                events: [],
+                checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST))
+            },
+            {
+                id: 'op-103',
+                patientId: 'PT-1234',
+                procedureName: 'Pontage Coronarien',
+                roomNumber: 3,
+                status: SurgeryStatus.CLEANING,
+                start: createDate(today, 9, 0),
+                end: createDate(today, 14, 0),
+                surgeon: STAFF[2],
+                anesthesiologist: STAFF[6],
+                events: [],
+                checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST))
+            },
+            {
+                id: 'op-104',
+                patientId: 'PT-5678',
+                procedureName: 'Cataracte Phaco',
+                roomNumber: 4,
+                status: SurgeryStatus.COMPLETED,
+                start: createDate(today, 8, 0),
+                end: createDate(today, 9, 0),
+                surgeon: STAFF[3],
+                anesthesiologist: STAFF[6],
+                events: [],
+                checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST))
+            },
+            {
+                id: 'op-105',
+                patientId: 'PT-5679',
+                procedureName: 'Cataracte (2e œil)',
+                roomNumber: 4,
+                status: SurgeryStatus.IN_PROGRESS,
+                start: createDate(today, 9, 30),
+                end: createDate(today, 10, 30),
+                surgeon: STAFF[3],
+                anesthesiologist: STAFF[6],
+                events: [],
+                checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST))
+            },
+            {
+                id: 'op-107',
+                patientId: 'PT-0001',
+                procedureName: 'Laminectomie',
+                roomNumber: 6,
+                status: SurgeryStatus.SCHEDULED,
+                start: createDate(today, 11, 0),
+                end: createDate(today, 13, 30),
+                surgeon: STAFF[1],
+                anesthesiologist: STAFF[5],
+                events: [],
+                checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST))
+            }
+        ];
+
+        const INITIAL_ROOMS = Array.from({ length: 20 }, (_, i) => {
+            const id = i + 1;
+            const activeOp = INITIAL_SURGERIES.find(op =>
+                op.roomNumber === id &&
+                (op.status === SurgeryStatus.IN_PROGRESS || op.status === SurgeryStatus.CLEANING || op.status === SurgeryStatus.CLOSING)
+            );
+
+            if (activeOp) {
+                return {
+                    id: id,
+                    name: `Salle ${id}`,
+                    status: activeOp.status,
+                    currentProcedure: activeOp.procedureName,
+                    surgeon: activeOp.surgeon.name,
+                    endTime: activeOp.end,
+                    events: activeOp.events,
+                    checklist: activeOp.checklist,
+                    currentSurgeryId: activeOp.id
+                };
+            } else {
+                return {
+                    id: id,
+                    name: `Salle ${id}`,
+                    status: 'LIBRE',
+                    currentProcedure: null,
+                    surgeon: null,
+                    endTime: null,
+                    events: [],
+                    checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST)),
+                    currentSurgeryId: null
+                };
+            }
+        });
+
+        // --- GEMINI SERVICE ---
+        const geminiService = {
+            async getOptimizationAdvice(surgeries) {
+                const ai = new GoogleGenAI(""); // Blank API key for demo
+                // Mock logic for demo if no key
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve({
+                            analysis: "Le bloc fonctionne à 85% de capacité. Détection d'un retard potentiel en Salle 1 dû à une complication chirurgicale mineure. Salle 3 en nettoyage prolongé.",
+                            recommendations: [
+                                "Réaffecter l'équipe de nettoyage de la Salle 4 vers la Salle 3.",
+                                "Décaler l'intervention prévue en Salle 1 de 15 minutes.",
+                                "Préparer la Salle 6 pour une urgence neurochirurgicale."
+                            ]
+                        });
+                    }, 1500);
+                });
+            },
+            async processVoiceCommand(text) {
+                // Mock logic
+                return { action: 'UNKNOWN', confidence: 0.8 };
+            }
+        };
+
+        // --- COMPONENTS ---
+
+        // Cockpit
+        const RoomCard = ({ room, onClick }) => {
+            let statusColor = "bg-emerald-500";
+            let statusText = "LIBRE";
+            let statusBorder = "border-slate-200";
+
+            if (room.status === 'EN COURS' || room.status === 'SUTURE / FERMETURE') {
+                statusColor = "bg-blue-600";
+                statusText = room.status;
+                statusBorder = "border-blue-200 ring-4 ring-blue-50";
+            } else if (room.status === 'NETTOYAGE') {
+                statusColor = "bg-amber-500";
+                statusText = "NETTOYAGE";
+                statusBorder = "border-amber-200";
+            } else if (room.status === 'PROGRAMMÉ' || room.status === 'PRÉPARATION') {
+                statusColor = "bg-slate-500";
+                statusText = room.status;
+            } else if (room.status === 'EN RETARD') {
+                statusColor = "bg-red-500";
+                statusText = "RETARD";
+                statusBorder = "border-red-200";
+            } else {
+                statusText = "LIBRE";
+            }
+
+            const timeLeft = room.endTime ? Math.max(0, Math.floor((new Date(room.endTime) - new Date()) / 60000)) : 0;
+
+            return (
+                <div onClick={onClick} className={`relative h-48 rounded-xl border ${statusBorder} bg-white shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col overflow-hidden group`}>
+                    <div className={`h-1.5 w-full ${statusColor}`} />
+                    <div className="p-4 flex-1 flex flex-col">
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="font-bold text-lg text-slate-800">{room.name}</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full text-white ${statusColor}`}>{statusText}</span>
+                        </div>
+                        {['EN COURS', 'SUTURE / FERMETURE'].includes(room.status) ? (
+                            <div className="mt-auto space-y-2">
+                                <div><p className="text-xs font-bold text-slate-900 line-clamp-2">{room.currentProcedure}</p><p className="text-xs text-slate-500">{room.surgeon}</p></div>
+                                <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg text-blue-700"><Clock className="w-4 h-4" /><span className="text-sm font-bold font-mono">{timeLeft} min</span></div>
+                            </div>
+                        ) : room.status === 'NETTOYAGE' ? (
+                            <div className="mt-auto flex items-center gap-2 p-2 bg-amber-50 rounded-lg text-amber-700"><Clock className="w-4 h-4 animate-pulse" /><span className="text-sm font-bold">Fin : {timeLeft} min</span></div>
+                        ) : (
+                            <div className="mt-auto flex items-center justify-center p-4 text-emerald-600 opacity-50 group-hover:opacity-100 transition-opacity"><PlayCircle className="w-8 h-8" /></div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const Cockpit = ({ rooms, onRoomClick }) => {
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {rooms.map(room => <RoomCard key={room.id} room={room} onClick={() => onRoomClick(room)} />)}
+                </div>
+            );
+        };
+
+        // SmartCalendar
+        const SmartCalendar = ({ rooms, onSlotClick }) => {
+            const startHour = 8;
+            const endHour = 20;
+            const hours = Array.from({ length: 13 }, (_, i) => i + startHour);
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full">
+                    <div className="flex border-b border-slate-200 bg-slate-50">
+                        <div className="w-32 p-3 font-semibold text-xs text-slate-500 uppercase tracking-wider border-r border-slate-200 flex items-center justify-center sticky left-0 z-10 bg-slate-50">Salles</div>
+                        <div className="flex-1 flex" style={{ minWidth: '800px' }}>
+                            {hours.map(h => <div key={h} className="flex-1 p-3 text-center border-r border-slate-100 last:border-0"><span className="text-xs font-medium text-slate-400">{h}h00</span></div>)}
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-auto custom-scrollbar">
+                        <div style={{ minWidth: '932px' }}>
+                            {rooms.map(room => (
+                                <div key={room.id} className="flex border-b border-slate-100 h-20 group hover:bg-slate-50 relative">
+                                    <div className="w-32 p-4 flex items-center justify-center border-r border-slate-200 bg-white sticky left-0 z-10 group-hover:bg-slate-50 font-bold text-slate-700 text-sm">{room.name}</div>
+                                    <div className="flex-1 relative flex">
+                                        {hours.map(h => <div key={h} className="flex-1 border-r border-slate-100 h-full cursor-crosshair transition-colors hover:bg-blue-50/50" title={`Planifier ${room.name} à ${h}h00`} onClick={() => onSlotClick(room, h)} />)}
+                                        {INITIAL_SURGERIES.filter(op => op.roomNumber === room.id).map(op => {
+                                            const opStart = op.start.getHours() + op.start.getMinutes() / 60;
+                                            const opEnd = op.end.getHours() + op.end.getMinutes() / 60;
+                                            if (opEnd <= startHour || opStart >= endHour) return null;
+                                            const effectiveStart = Math.max(opStart, startHour);
+                                            const effectiveEnd = Math.min(opEnd, (endHour + 1));
+                                            const duration = effectiveEnd - effectiveStart;
+                                            const totalHours = endHour - startHour + 1;
+                                            const leftPerc = ((effectiveStart - startHour) / totalHours) * 100;
+                                            const widthPerc = (duration / totalHours) * 100;
+                                            let bgClass = "bg-blue-500 border-blue-600";
+                                            if (op.status === SurgeryStatus.CLEANING) bgClass = "bg-amber-500 border-amber-600";
+                                            if (op.status === SurgeryStatus.SCHEDULED) bgClass = "bg-slate-400 border-slate-500 opacity-80";
+                                            // if (op.status === 'free') bgClass = "bg-emerald-500";
+                                            return (
+                                                <div key={op.id} className={`absolute top-2 bottom-2 rounded-md border text-white text-[10px] leading-tight p-1 overflow-hidden shadow-sm hover:z-20 hover:shadow-lg transition-all cursor-pointer ${bgClass}`} style={{ left: `${leftPerc}%`, width: `${widthPerc}%` }} onClick={(e) => { e.stopPropagation(); alert(`Intervention: ${op.procedureName}\nChirurgien: ${op.surgeon.name}`); }}>
+                                                    <span className="font-bold block truncate">{op.procedureName}</span>
+                                                    <span className="opacity-90 truncate">{op.surgeon.name}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // StatsOverview
+        const StatsOverview = ({ rooms }) => {
+            const activeRooms = rooms.filter(r => r.status === 'busy').length; // Corrected to use simplified check or new statuses
+            // Actually let's use check for busy statuses
+            const busyCount = rooms.filter(r => ['EN COURS', 'NETTOYAGE', 'SUTURE / FERMETURE'].includes(r.status)).length;
+            const occupancyRate = Math.round((busyCount / rooms.length) * 100);
+            const totalProcedures = 18;
+            const [analyzing, setAnalyzing] = useState(false);
+            const [advice, setAdvice] = useState(null);
+
+            const chartData = rooms.slice(0, 10).map(r => ({ name: r.name, heures: Math.floor(Math.random() * 8) + 2 }));
+            const pieData = [{ name: 'Chirurgie', value: 65, color: '#3b82f6' }, { name: 'Nettoyage', value: 20, color: '#f59e0b' }, { name: 'Attente', value: 15, color: '#e2e8f0' }];
+
+            const handleOptimization = async () => {
+                setAnalyzing(true);
+                setAdvice(null);
+                try {
+                    const result = await geminiService.getOptimizationAdvice(rooms);
+                    setAdvice(result);
+                } catch (e) { setAdvice({ analysis: "Erreur lors de l'analyse.", recommendations: [] }); } finally { setAnalyzing(false); }
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center bg-gradient-to-r from-indigo-500 to-purple-600 p-6 rounded-2xl text-white shadow-lg">
+                        <div><h2 className="text-xl font-bold flex items-center gap-2"><Sparkles className="w-5 h-5 text-yellow-300" /> Optimisation Intelligente</h2><p className="text-indigo-100 text-sm mt-1 opacity-90">Analyse en temps réel des flux.</p></div>
+                        <button onClick={handleOptimization} disabled={analyzing} className="px-5 py-2.5 bg-white text-indigo-600 font-bold rounded-xl shadow-md hover:bg-indigo-50 transition-all disabled:opacity-50 flex items-center gap-2">{analyzing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} {analyzing ? 'Analyse...' : 'Lancer l\'analyse IA'}</button>
+                    </div>
+                    {advice && (
+                        <div className="animate-in slide-in-from-top-4 bg-white border border-indigo-100 p-6 rounded-2xl shadow-sm">
+                            <h3 className="text-lg font-bold text-indigo-900 mb-2">Rapport de l'IA</h3><p className="text-slate-700 mb-4 text-sm leading-relaxed">{advice.analysis}</p>
+                            <h4 className="font-semibold text-xs uppercase tracking-wider text-slate-500 mb-3">Recommandations</h4>
+                            <ul className="space-y-2">{advice.recommendations.map((rec, i) => <li key={i} className="flex items-start gap-3 bg-indigo-50/50 p-3 rounded-lg border border-indigo-50"><AlertTriangle className="w-4 h-4 text-indigo-500 mt-0.5" /><span className="text-sm text-indigo-900 font-medium">{rec}</span></li>)}</ul>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center"><div className="text-4xl font-black text-emerald-500 mb-2">{occupancyRate}%</div><div className="text-sm font-bold text-slate-500 uppercase tracking-wide">Taux d'Occupation</div></div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center"><div className="text-4xl font-black text-blue-500 mb-2">{totalProcedures}</div><div className="text-sm font-bold text-slate-500 uppercase tracking-wide">Procédures Aujourd'hui</div></div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center"><div className="text-4xl font-black text-purple-500 mb-2">22m</div><div className="text-sm font-bold text-slate-500 uppercase tracking-wide">Temps Moyen Nettoyage</div></div>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-80">
+                        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Utilisation par Salle (Heures)</h3>
+                            <div className="flex-1 w-full min-h-0"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} /><YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} /><Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} cursor={{ fill: '#f8fafc' }} /><Bar dataKey="heures" fill="#3b82f6" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Répartition du Temps</h3>
+                            <div className="flex-1 w-full min-h-0 relative"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer><div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-2xl font-black text-slate-800">100%</span></div></div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // SurgeryTimeline
+        const EVENT_ICONS = {
+            [EventType.PATIENT_ENTRY]: React.createElement(DoorOpen, { className: "w-4 h-4" }),
+            [EventType.ANESTHESIA_INDUCTION]: React.createElement(Activity, { className: "w-4 h-4" }),
+            [EventType.INCISION]: React.createElement(Scissors, { className: "w-4 h-4" }),
+            [EventType.CLOSURE]: React.createElement(CheckCircle, { className: "w-4 h-4" }),
+            [EventType.PATIENT_EXIT]: React.createElement(Play, { className: "w-4 h-4" })
+        };
+
+        const SurgeryTimeline = ({ room, onAddEvent, onClose, onOpenChecklist }) => {
+            if (!room) return null;
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div><h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Activity className="w-5 h-5 text-blue-600" /> Traçabilité Intervention</h2><p className="text-sm text-slate-500 mt-1">{room.name} — {room.currentProcedure}</p></div>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">✕</button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                            <div className="flex justify-end"><button onClick={onOpenChecklist} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors font-semibold text-sm"><ListChecks className="w-4 h-4" /> Checklist Sécurité OMS</button></div>
+                            <div className="relative pl-4 space-y-8 before:absolute before:left-[19px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                                {room.events && room.events.length > 0 ? (
+                                    room.events.map((evt, idx) => (
+                                        <div key={idx} className="relative flex items-start gap-4 animate-in slide-in-from-left-2">
+                                            <div className="absolute -left-[5px] top-0 w-3 h-3 rounded-full bg-blue-600 ring-4 ring-white" />
+                                            <div className="flex-1 bg-white border border-slate-100 p-4 rounded-xl shadow-sm">
+                                                <div className="flex justify-between items-start mb-1"><span className="font-bold text-slate-800">{evt.type}</span><span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{new Date(evt.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+                                                <p className="text-xs text-slate-500">Enregistré par {evt.user}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : <div className="text-center py-8 text-slate-400 italic">Aucun événement pour le moment</div>}
+                            </div>
+                        </div>
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {Object.values(EventType).map(type => {
+                                const isDone = room.events?.some(e => e.type === type);
+                                return (
+                                    <button key={type} disabled={isDone} onClick={() => onAddEvent(type)} className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all flex items-center justify-center gap-2 ${isDone ? 'bg-slate-100 text-slate-400 border-transparent cursor-not-allowed' : 'bg-white text-slate-700 border-slate-200 hover:border-blue-500 hover:text-blue-600 shadow-sm'}`}>
+                                        {isDone && <CheckCircle className="w-3 h-3" />} {type}
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // WhoChecklist
+        const WhoChecklist = ({ room, onToggle, onClose }) => {
+            if (!room) return null;
+            const phases = { BEFORE_INDUCTION: "Avant Induction", BEFORE_INCISION: "Time-Out (Avant Incision)", BEFORE_EXIT: "Avant Sortie de Salle" };
+            return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col shadow-2xl overflow-hidden max-h-[85vh]">
+                        <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-emerald-50/50">
+                            <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-800"><ShieldCheck className="w-5 h-5 text-emerald-600" /> Checklist Sécurité OMS</h3>
+                            <button onClick={onClose} className="p-2 hover:bg-black/5 rounded-full transition-colors text-slate-500">✕</button>
+                        </div>
+                        <div className="overflow-y-auto p-6 space-y-8">
+                            {Object.keys(phases).map(phaseKey => (
+                                <div key={phaseKey}>
+                                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-4 border-b border-slate-100 pb-2">{phases[phaseKey]}</h4>
+                                    <div className="space-y-3">
+                                        {room.checklist.filter(i => i.phase === phaseKey).map(item => (
+                                            <button key={item.id} onClick={() => onToggle(room.id, item.id)} className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left group ${item.checked ? 'bg-emerald-50 border-emerald-200 text-emerald-900 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:shadow-md'}`}>
+                                                {item.checked ? <div className="w-5 h-5 rounded bg-emerald-500 text-white flex items-center justify-center"><CheckSquare className="w-3.5 h-3.5" /></div> : <div className="w-5 h-5 rounded border-2 border-slate-300 group-hover:border-emerald-400" />}
+                                                <span className="font-medium text-sm">{item.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // VoiceAssistant
+        const VoiceAssistant = () => {
+            const [isListening, setIsListening] = useState(false);
+            const [transcript, setTranscript] = useState('');
+            const [response, setResponse] = useState('');
+            const recognitionRef = useRef(null);
+
+            useEffect(() => {
+                if ('webkitSpeechRecognition' in window) {
+                    const SpeechRecognition = window.webkitSpeechRecognition;
+                    recognitionRef.current = new SpeechRecognition();
+                    recognitionRef.current.continuous = false;
+                    recognitionRef.current.lang = 'fr-FR';
+                    recognitionRef.current.onstart = () => { setIsListening(true); setResponse("J'écoute..."); };
+                    recognitionRef.current.onend = () => { setIsListening(false); };
+                    recognitionRef.current.onresult = (event) => { const text = event.results[0][0].transcript; setTranscript(text); processCommand(text); };
+                }
+            }, []);
+
+            const processCommand = (text) => {
+                const lower = text.toLowerCase();
+                setTimeout(() => {
+                    if (lower.includes('salle 1')) setResponse("J'ouvre la traçabilité de la Salle 1.");
+                    else if (lower.includes('planning')) setResponse("Affichage du planning des interventions.");
+                    else if (lower.includes('stat')) setResponse("Voici le tableau de bord.");
+                    else setResponse("Commande non reconnue, mais notée.");
+                }, 800);
+            };
+
+            const toggleListening = () => {
+                if (!recognitionRef.current) return;
+                if (isListening) recognitionRef.current.stop();
+                else { setTranscript(''); setResponse(''); try { recognitionRef.current.start(); } catch (e) { } }
+            };
+
+            return (
+                <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-3 pointer-events-none">
+                    {(transcript || response) && (
+                        <div className="bg-white/90 backdrop-blur-md border border-slate-200 shadow-xl rounded-2xl p-4 max-w-xs mb-2 transition-all animate-in slide-in-from-bottom-5 pointer-events-auto">
+                            {transcript && <p className="text-slate-500 text-sm mb-2 italic">"{transcript}"</p>}
+                            {response && <div className="flex items-start gap-2 text-indigo-700 font-medium"><Sparkles className="w-4 h-4 mt-0.5 shrink-0" /><p className="text-sm">{response}</p></div>}
+                        </div>
+                    )}
+                    <button onClick={toggleListening} className={`w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all pointer-events-auto ${isListening ? 'bg-red-500 text-white animate-pulse ring-4 ring-red-200' : 'bg-indigo-600 text-white hover:scale-105 hover:bg-indigo-700'}`}>
+                        {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                    </button>
+                </div>
+            );
+        };
+
+        const NavItem = ({ id, label, icon, active, onClick }) => (
+            <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                {icon} <span className="font-medium text-sm">{label}</span>
+            </button>
+        );
+
+        // --- APP ---
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('cockpit');
+            const [rooms, setRooms] = useState(INITIAL_ROOMS);
+            const [selectedRoom, setSelectedRoom] = useState(null);
+            const [showTimeline, setShowTimeline] = useState(false);
+            const [showChecklist, setShowChecklist] = useState(false);
+
+            const handleRoomClick = (room) => {
+                setSelectedRoom(room);
+                if (['EN COURS', 'SUTURE / FERMETURE', 'NETTOYAGE', 'PRÉPARATION'].includes(room.status)) {
+                    setShowTimeline(true);
+                } else {
+                    setActiveTab('planning');
+                }
+            };
+
+            const handleAddEvent = (type) => {
+                if (!selectedRoom) return;
+                const updatedRooms = rooms.map(r => {
+                    if (r.id === selectedRoom.id) {
+                        const newEvent = { type, time: new Date(), user: 'Dr. Admin' };
+                        const updatedRoom = { ...r, events: [...(r.events || []), newEvent] };
+                        setSelectedRoom(updatedRoom);
+                        return updatedRoom;
+                    }
+                    return r;
+                });
+                setRooms(updatedRooms);
+            };
+
+            const handleToggleChecklist = (roomId, itemId) => {
+                const updatedRooms = rooms.map(r => {
+                    if (r.id === roomId) {
+                        const updatedChecklist = r.checklist.map(i => i.id === itemId ? { ...i, checked: !i.checked } : i);
+                        const updatedRoom = { ...r, checklist: updatedChecklist };
+                        if (selectedRoom?.id === roomId) setSelectedRoom(updatedRoom);
+                        return updatedRoom;
+                    }
+                    return r;
+                });
+                setRooms(updatedRooms);
+            };
+
+            const renderContent = () => {
+                switch (activeTab) {
+                    case 'cockpit': return <Cockpit rooms={rooms} onRoomClick={handleRoomClick} />;
+                    case 'planning': return <SmartCalendar rooms={rooms} onSlotClick={() => { }} />;
+                    case 'stats': return <StatsOverview rooms={rooms} />;
+                    default: return null;
+                }
+            };
+
+            return (
+                <div className="flex h-screen w-full bg-slate-50">
+                    <aside className="w-64 bg-slate-900 text-white flex flex-col shadow-xl z-20">
+                        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
+                            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center"><Activity className="w-5 h-5 text-white" /></div>
+                            <span className="font-bold text-lg tracking-tight">SurgiTrack</span>
+                        </div>
+                        <nav className="flex-1 py-6 px-3 space-y-1">
+                            <NavItem id="cockpit" label="Cockpit Live" icon={<Layout className="w-5 h-5" />} active={activeTab === 'cockpit'} onClick={() => setActiveTab('cockpit')} />
+                            <NavItem id="planning" label="Planning" icon={<Calendar className="w-5 h-5" />} active={activeTab === 'planning'} onClick={() => setActiveTab('planning')} />
+                            <NavItem id="stats" label="Statistiques" icon={<BarChart3 className="w-5 h-5" />} active={activeTab === 'stats'} onClick={() => setActiveTab('stats')} />
+                        </nav>
+                        <div className="p-4 border-t border-slate-800">
+                            <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-slate-800/50">
+                                <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-xs font-bold">DA</div>
+                                <div><p className="text-sm font-medium">Dr. Admin</p><p className="text-xs text-slate-400">Chef de Bloc</p></div>
+                            </div>
+                        </div>
+                    </aside>
+                    <main className="flex-1 flex flex-col h-full overflow-hidden">
+                        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
+                            <h1 className="text-xl font-bold text-slate-800">
+                                {activeTab === 'cockpit' && 'Cockpit Temps Réel'}
+                                {activeTab === 'planning' && 'Planning des Interventions'}
+                                {activeTab === 'stats' && 'Tableau de Bord Statistiques'}
+                            </h1>
+                            <div className="flex items-center gap-4"><span className="text-sm text-slate-500">{new Date().toLocaleDateString()}</span></div>
+                        </header>
+                        <div className="flex-1 overflow-auto p-6 relative">
+                            {renderContent()}
+                        </div>
+                    </main>
+                    {showTimeline && selectedRoom && <SurgeryTimeline room={selectedRoom} onClose={() => setShowTimeline(false)} onAddEvent={handleAddEvent} onOpenChecklist={() => setShowChecklist(true)} />}
+                    {showChecklist && selectedRoom && <WhoChecklist room={selectedRoom} onClose={() => setShowChecklist(false)} onToggle={handleToggleChecklist} />}
+                    <VoiceAssistant />
+                </div>
+            );
+        };
+
+        // --- MOUNT ---
+        const rootElement = document.getElementById('root');
+        const root = createRoot(rootElement);
+        root.render(React.createElement(App));
+    </script>
+</body>
+
+</html>
