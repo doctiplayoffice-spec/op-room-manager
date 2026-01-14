@@ -63,6 +63,25 @@
                 logBox.style.display = 'block';
             }
         });
+
+        // ASSET CHECKER
+        window.addEventListener('load', function () {
+            const logBox = document.getElementById('debug-log');
+            const scripts = document.querySelectorAll('script[type="module"]');
+            if (scripts.length === 0 && logBox) logBox.innerText += "⚠️ No module scripts found in DOM.\n";
+
+            scripts.forEach(s => {
+                if (s.src) {
+                    fetch(s.src)
+                        .then(res => {
+                            if (logBox) logBox.innerText += `📡 Fetch ${s.src.split('/').pop()}: ${res.status} ${res.statusText}\n`;
+                        })
+                        .catch(err => {
+                            if (logBox) logBox.innerText += `❌ Fetch failed: ${err}\n`;
+                        });
+                }
+            });
+        });
     </script>
     <script type="module" src="./src/main.jsx"></script>
 </body>
