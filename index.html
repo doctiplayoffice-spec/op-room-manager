@@ -41,10 +41,29 @@
 <body class="bg-slate-50 text-slate-900">
     <div id="root" class="h-full">
         <div
-            style="height: 100vh; display: flex; align-items: center; justify-content: center; font-family: sans-serif; color: #64748b;">
-            Chargement du Bloc...
+            style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; color: #64748b;">
+            <div style="margin-bottom: 20px;">Chargement du Bloc...</div>
+            <div id="debug-log"
+                style="color: #ef4444; font-size: 12px; max-width: 80%; word-break: break-all; white-space: pre-wrap; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            </div>
         </div>
     </div>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            const logBox = document.getElementById('debug-log');
+            if (logBox) {
+                logBox.innerText += `❌ ${msg}\nLine: ${line}\n`;
+                logBox.style.display = 'block';
+            }
+        };
+        window.addEventListener('unhandledrejection', function (event) {
+            const logBox = document.getElementById('debug-log');
+            if (logBox) {
+                logBox.innerText += `⚠️ Unhandled Promise Rejection: ${event.reason}\n`;
+                logBox.style.display = 'block';
+            }
+        });
+    </script>
     <script type="module" src="./src/main.jsx"></script>
 </body>
 
