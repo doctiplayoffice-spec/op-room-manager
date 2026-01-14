@@ -1,0 +1,45 @@
+[debug] [2026-01-13T17:57:24.230Z] ----------------------------------------------------------------------
+[debug] [2026-01-13T17:57:24.232Z] Command:       /usr/local/bin/node /Users/mac/.gemini/antigravity/playground/scalar-galaxy/op-room-manager/node_modules/.bin/firebase projects:create surgitrack-manager --display-name SurgiTrack Manager
+[debug] [2026-01-13T17:57:24.232Z] CLI Version:   15.2.1
+[debug] [2026-01-13T17:57:24.232Z] Platform:      darwin
+[debug] [2026-01-13T17:57:24.232Z] Node Version:  v24.12.0
+[debug] [2026-01-13T17:57:24.232Z] Time:          Tue Jan 13 2026 09:57:24 GMT-0800 (Pacific Standard Time)
+[debug] [2026-01-13T17:57:24.232Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-01-13T17:57:24.234Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-13T17:57:24.234Z] > authorizing via signed-in user (doctiplayoffice@gmail.com)
+[debug] [2026-01-13T17:57:24.235Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:24.235Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:24.236Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects [none]
+[debug] [2026-01-13T17:57:24.236Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"projectId":"surgitrack-manager","name":"SurgiTrack Manager"}
+[debug] [2026-01-13T17:57:25.312Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects 200
+[debug] [2026-01-13T17:57:25.312Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects {"name":"operations/create_project.global.8742563035699979091"}
+[debug] [2026-01-13T17:57:25.313Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:25.313Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:25.313Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 [none]
+[debug] [2026-01-13T17:57:26.041Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 200
+[debug] [2026-01-13T17:57:26.041Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 {"name":"operations/create_project.global.8742563035699979091"}
+[debug] [2026-01-13T17:57:26.542Z] [Project Creation Poller] Retrying task index 0
+[debug] [2026-01-13T17:57:26.542Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:26.542Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:26.542Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 [none]
+[debug] [2026-01-13T17:57:26.786Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 200
+[debug] [2026-01-13T17:57:26.786Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 {"name":"operations/create_project.global.8742563035699979091"}
+[debug] [2026-01-13T17:57:27.787Z] [Project Creation Poller] Retrying task index 0
+[debug] [2026-01-13T17:57:27.788Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:27.788Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:27.788Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 [none]
+[debug] [2026-01-13T17:57:28.256Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 200
+[debug] [2026-01-13T17:57:28.256Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/operations/create_project.global.8742563035699979091 {"name":"operations/create_project.global.8742563035699979091","metadata":{"@type":"type.googleapis.com/google.cloudresourcemanager.v1.ProjectCreationStatus","gettable":true,"ready":true},"done":true,"response":{"@type":"type.googleapis.com/google.cloudresourcemanager.v1.Project","projectNumber":"674650522396","projectId":"surgitrack-manager","lifecycleState":"ACTIVE","name":"SurgiTrack Manager","createTime":"2026-01-13T17:57:26.660585Z"}}
+[debug] [2026-01-13T17:57:28.258Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:28.258Z] Checked if tokens are valid: true, expires at: 1768330624616
+[debug] [2026-01-13T17:57:28.258Z] >>> [apiv2][query] POST https://firebase.googleapis.com/v1beta1/projects/surgitrack-manager:addFirebase [none]
+[debug] [2026-01-13T17:57:29.818Z] <<< [apiv2][status] POST https://firebase.googleapis.com/v1beta1/projects/surgitrack-manager:addFirebase 403
+[debug] [2026-01-13T17:57:29.818Z] <<< [apiv2][body] POST https://firebase.googleapis.com/v1beta1/projects/surgitrack-manager:addFirebase {"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}
+[debug] [2026-01-13T17:57:29.819Z] Request to https://firebase.googleapis.com/v1beta1/projects/surgitrack-manager:addFirebase had HTTP Error: 403, The caller does not have permission
+[debug] [2026-01-13T17:57:29.820Z] FirebaseError: Request to https://firebase.googleapis.com/v1beta1/projects/surgitrack-manager:addFirebase had HTTP Error: 403, The caller does not have permission
+    at responseToError (/Users/mac/.gemini/antigravity/playground/scalar-galaxy/op-room-manager/node_modules/firebase-tools/lib/responseToError.js:53:12)
+    at RetryOperation._fn (/Users/mac/.gemini/antigravity/playground/scalar-galaxy/op-room-manager/node_modules/firebase-tools/lib/apiv2.js:320:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] 
+[error] Error: Failed to add Firebase to Google Cloud Platform project. See firebase-debug.log for more info.
