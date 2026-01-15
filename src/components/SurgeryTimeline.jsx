@@ -11,7 +11,7 @@ const EVENT_ICONS = {
     [EventType.PATIENT_EXIT]: <Play className="w-4 h-4" />
 };
 
-const SurgeryTimeline = ({ room, onAddEvent, onClose, onOpenChecklist }) => {
+const SurgeryTimeline = ({ room, onAddEvent, onClose, onOpenChecklist, onExtendOperation }) => {
     if (!room) return null;
 
     return (
@@ -35,7 +35,22 @@ const SurgeryTimeline = ({ room, onAddEvent, onClose, onOpenChecklist }) => {
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-                    <div className="flex justify-end">
+                    <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded-lg border border-blue-100">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-blue-800 uppercase tracking-wide">Prolonger :</span>
+                            <div className="flex gap-1">
+                                {[5, 10, 15, 30].map(min => (
+                                    <button
+                                        key={min}
+                                        onClick={() => onExtendOperation?.(room.id, min)}
+                                        className="px-2 py-1 bg-white text-blue-600 text-xs font-bold rounded border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors"
+                                    >
+                                        +{min}m
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <button
                             onClick={onOpenChecklist}
                             className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors font-semibold text-sm"

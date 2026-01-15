@@ -1,4 +1,4 @@
-import { SurgeryStatus, StaffRole, EventType, ChecklistPhases } from './types.js';
+import { SurgeryStatus, StaffRole, EventType, ChecklistPhases, RoomType } from './types.js';
 
 export const STAFF = [
     { id: 's1', name: 'Dr. Hachem Sayegh', role: StaffRole.SURGEON, specialty: 'Orthopédie' },
@@ -135,29 +135,55 @@ export const INITIAL_ROOMS = Array.from({ length: 20 }, (_, i) => {
         (op.status === SurgeryStatus.IN_PROGRESS || op.status === SurgeryStatus.CLEANING || op.status === SurgeryStatus.CLOSING)
     );
 
+    const isHyperSeptic = id >= 17;
+    const roomType = isHyperSeptic ? RoomType.HYPER_SEPTIC : RoomType.STANDARD;
+
+    // Hyper-Septic Profile
+    const asepsisProfile = isHyperSeptic ? {
+        pressure_mode: 'POSITIVE',
+        pressure_pa_target: 15,
+        air_changes_per_hour: 30,
+        hepa_filter: 'H14',
+        airflow: 'Laminaire Vertical',
+        air_velocity_mps: 0.30,
+        temp_c_min: 18,
+        temp_c_max: 20,
+        humidity_pct_min: 40,
+        humidity_pct_max: 60,
+        turnover_cleaning_min: 20, // Reinforced default
+        terminal_cleaning_min: 45,
+        max_people_recommended: 4
+    } : null;
+
     if (activeOp) {
         return {
             id: id,
-            name: `Salle ${id}`,
+            name: isHyperSeptic ? `Salle Hyper Septique ${id}` : `Salle ${id}`,
+            type: roomType,
+            asepsisProfile: asepsisProfile,
             status: activeOp.status,
             currentProcedure: activeOp.procedureName,
             surgeon: activeOp.surgeon.name,
             endTime: activeOp.end,
             events: activeOp.events,
             checklist: activeOp.checklist,
-            currentSurgeryId: activeOp.id
+            currentSurgeryId: activeOp.id,
+            schedule: []
         };
     } else {
         return {
             id: id,
-            name: `Salle ${id}`,
-            status: 'LIBRE', // Default string for free rooms, or we could add a SurgeryStatus.FREE if requested? User didn't specify FREE in enum.
+            name: isHyperSeptic ? `Salle Hyper Septique ${id}` : `Salle ${id}`,
+            type: roomType,
+            asepsisProfile: asepsisProfile,
+            status: 'LIBRE',
             currentProcedure: null,
             surgeon: null,
             endTime: null,
             events: [],
             checklist: JSON.parse(JSON.stringify(DEFAULT_CHECKLIST)),
-            currentSurgeryId: null
+            currentSurgeryId: null,
+            schedule: []
         };
     }
 });

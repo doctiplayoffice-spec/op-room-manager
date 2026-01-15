@@ -404,7 +404,7 @@ const LandingPage = () => {
                   </p>
 
                   <div className="cta">
-                    <Link className="primary" to="/app" aria-label="Démarrer">
+                    <Link className="primary" to="/auth" aria-label="Démarrer">
                       Démarrer
                       <span aria-hidden="true">→</span>
                     </Link>

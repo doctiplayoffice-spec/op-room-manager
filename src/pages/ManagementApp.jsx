@@ -8,49 +8,60 @@ import WhoChecklist from '../components/WhoChecklist';
 import SmartCalendar from '../components/SmartCalendar';
 import StatsOverview from '../components/StatsOverview';
 import NewInterventionModal from '../components/NewInterventionModal';
-import VoiceAssistant from '../components/VoiceAssistant';
+import CleaningModal from '../components/CleaningModal';
+import OperationDetailsModal from '../components/OperationDetailsModal';
+import RoomDetailsModal from '../components/RoomDetailsModal';
 import { formatMoroccoDateTime } from '../utils/time';
-import { INITIAL_ROOMS } from '../data.js';
+
+// import { INITIAL_ROOMS } from '../data.js'; // REMOVE: Managed by hook
+import { useTimeEngine } from '../hooks/useTimeEngine';
 import { SurgeryStatus, EventType } from '../types';
 
 
 const ManagementApp = () => {
     const [activeTab, setActiveTab] = useState('cockpit');
-    const [rooms, setRooms] = useState(INITIAL_ROOMS);
+    // const [rooms, setRooms] = useState(INITIAL_ROOMS); // REMOVE: Managed by hook
+    const { rooms, updateRoom: setSingleRoom, extendOperation, scheduleOperation, finishCleaning } = useTimeEngine(); // Use hook
     const [currentTime, setCurrentTime] = useState(formatMoroccoDateTime());
+    const [viewDate, setViewDate] = useState(new Date()); // For Calendar navigation
+
+    // Allow setRooms to work for compatibility if possible, or refactor usage.
+    // The hook exposes `updateRoom` for single updates.
+    // Ideally we refactor `setRooms` calls to use `updateRoom` or a batch update if needed.
+    // For now, I'll create a compatibility wrapper locally if needed, but better to refactor handlers.
+
+    // NOTE: The previous code passed `setRooms` essentially doing functional updates.
+    // I need to adapt the handlers below to work with the hook's `updateRoom` or `rooms` state.
+    // However, the hook is the source of truth.
+    // Let's modify the handlers to use `setSingleRoom` or similar.
 
     useEffect(() => {
         const timer = setInterval(() => {
             const now = new Date();
             setCurrentTime(formatMoroccoDateTime(now));
-
-            // Check for rooms that finished cleaning
-            setRooms(prevRooms => prevRooms.map(room => {
-                if (room.status === SurgeryStatus.CLEANING && room.endTime && new Date(room.endTime) <= now) {
-                    return {
-                        ...room,
-                        status: 'LIBRE',
-                        currentProcedure: null,
-                        surgeon: null,
-                        currentSurgeryId: null,
-                        endTime: null,
-                        checklist: room.checklist.map(c => ({ ...c, checked: false })), // Reset checklist
-                        events: [] // Clear events
-                    };
-                }
-                return room;
-            }));
+            // Cleaning logic moved to useTimeEngine
         }, 1000);
         return () => clearInterval(timer);
     }, []);
 
 
     // Modal State
-    const [selectedRoom, setSelectedRoom] = useState(null);
     const [showTimeline, setShowTimeline] = useState(false);
+    const [showCleaning, setShowCleaning] = useState(false);
+    const [showDetails, setShowDetails] = useState(false); // New state for details
+    const [selectedOperation, setSelectedOperation] = useState(null); // Data for details
     const [showChecklist, setShowChecklist] = useState(false);
     const [showNewModal, setShowNewModal] = useState(false);
+    const [showRoomDetails, setShowRoomDetails] = useState(false);
+    const [selectedRoomId, setSelectedRoomId] = useState(null);
+
+    // Prefill states
     const [prefillRoom, setPrefillRoom] = useState(null);
+    const [prefillDate, setPrefillDate] = useState(null);
+    const [prefillTime, setPrefillTime] = useState(null);
+
+    // Derived State
+    const selectedRoom = rooms.find(r => r.id === selectedRoomId) || null;
 
     // Helpers
     const extractRoomNumber = (room) => {
@@ -58,22 +69,25 @@ const ManagementApp = () => {
         return m ? Number(m[0]) : null;
     };
 
-    const openNewIntervention = (roomNumber = null) => {
+    const openNewIntervention = (roomNumber = null, date = null, time = null) => {
         setPrefillRoom(roomNumber);
+        setPrefillDate(date ? date.toISOString().split('T')[0] : null);
+        setPrefillTime(time || null);
         setShowNewModal(true);
     };
 
     // Handlers
+    // Handlers
+    // Handlers
     const handleRoomClick = (room) => {
-        setSelectedRoom(room);
-        // Check new French statuses
-        const activeStatuses = ['EN COURS', 'SUTURE / FERMETURE', 'NETTOYAGE', 'PRÉPARATION'];
-        if (activeStatuses.includes(room.status)) {
-            setShowTimeline(true);
+        setSelectedRoomId(room.id);
+
+        if (room.status === SurgeryStatus.DISINFECTION || room.status === SurgeryStatus.CLEANING) {
+            // Cleaning -> Cleaning Modal
+            setShowCleaning(true);
         } else {
-            // Todo: Open simple form for 'free' rooms (omitted for brevity in this step)
-            // We can just switch to planning tab as a mock action
-            setActiveTab('planning');
+            // All other states (Free, Scheduled, Active) -> Room Details / Fiche Salle
+            setShowRoomDetails(true);
         }
     };
 
@@ -87,61 +101,79 @@ const ManagementApp = () => {
         if (type === EventType.CLOSURE) {
             newStatus = SurgeryStatus.CLOSING; // "SUTURE / FERMETURE"
         } else if (type === EventType.PATIENT_EXIT) {
-            newStatus = SurgeryStatus.CLEANING; // "NETTOYAGE"
-            // Set timer for 20 minutes from now
-            newEndTime = new Date(Date.now() + 20 * 60 * 1000);
+            // Trigger Disinfection directly (User Request: Skip Attention)
+            newStatus = SurgeryStatus.DISINFECTION;
+            const now = new Date();
+
+            // Start 20min cleanup immediately
+            const cleanupDuration = 20 * 60 * 1000;
+
+            const updatedRoom = {
+                ...selectedRoom,
+                status: SurgeryStatus.DISINFECTION,
+                operationEndAt: now, // Op ends now
+                disinfectionStartAt: now, // Cleaning starts now
+                disinfectionEndAt: new Date(now.getTime() + cleanupDuration),
+
+                attentionStartAt: null,
+                attentionEndAt: null,
+
+                endTime: now, // For legacy display
+                events: [...(selectedRoom.events || []), { type, time: now, user: 'Dr. Admin' }]
+            };
+            setSingleRoom(updatedRoom);
+            return;
         } else if ([EventType.PATIENT_ENTRY, EventType.ANESTHESIA_INDUCTION, EventType.INCISION].includes(type)) {
             newStatus = SurgeryStatus.IN_PROGRESS;
         }
 
-        // Update local state (optimistic UI)
-        const updatedRooms = rooms.map(r => {
-            if (r.id === selectedRoom.id) {
-                const newEvent = { type, time: new Date(), user: 'Dr. Admin' };
-                const updatedRoom = {
-                    ...r,
-                    status: newStatus,
-                    endTime: newEndTime,
-                    events: [...(r.events || []), newEvent]
-                };
-                setSelectedRoom(updatedRoom); // Keep modal in sync
-                return updatedRoom;
-            }
-            return r;
-        });
-        setRooms(updatedRooms);
+        // Default update for other events
+        const newEvent = { type, time: new Date(), user: 'Dr. Admin' };
+
+        // Ensure we don't duplicate events if user double clicks fast (though UI disables button)
+
+        const updatedRoom = {
+            ...selectedRoom,
+            status: newStatus,
+            endTime: newEndTime,
+            events: [...(selectedRoom.events || []), newEvent]
+        };
+
+        setSingleRoom(updatedRoom);
+        // No need to setSelectedRoom, it's derived
     };
 
     const handleToggleChecklist = (roomId, itemId) => {
-        const updatedRooms = rooms.map(r => {
-            if (r.id === roomId) {
-                const updatedChecklist = r.checklist.map(i =>
-                    i.id === itemId ? { ...i, checked: !i.checked } : i
-                );
-                const updatedRoom = { ...r, checklist: updatedChecklist };
-                if (selectedRoom?.id === roomId) setSelectedRoom(updatedRoom);
-                return updatedRoom;
-            }
-            return r;
-        });
-        setRooms(updatedRooms);
+        const room = rooms.find(r => r.id === roomId);
+        if (room) {
+            const updatedChecklist = room.checklist.map(i =>
+                i.id === itemId ? { ...i, checked: !i.checked } : i
+            );
+            const updatedRoom = { ...room, checklist: updatedChecklist };
+            setSingleRoom(updatedRoom);
+        }
     };
 
     const handleSchedule = (payload) => {
-        const updatedRooms = rooms.map(r => {
-            if (r.id === payload.salle) {
-                return {
-                    ...r,
-                    status: SurgeryStatus.IN_PROGRESS, // Directly to "EN COURS" as requested
-                    currentProcedure: payload.intervention,
-                    surgeon: payload.chirurgien,
-                    currentSurgeryId: payload.id,
-                    // Note: We could also update endTime based on dureeMinutes if needed
-                };
-            }
-            return r;
-        });
-        setRooms(updatedRooms);
+        const [h, m] = payload.heureDebut.split(':').map(Number);
+        const [yy, mm, dd] = payload.date.split('-').map(Number);
+
+        // Create start date based on Payload Date
+        const start = new Date(yy, mm - 1, dd, h, m, 0);
+
+        const durationMs = (payload.dureeMinutes || 60) * 60 * 1000;
+        const end = new Date(start.getTime() + durationMs);
+
+        const operationData = {
+            id: payload.id,
+            procedure: payload.intervention,
+            surgeon: payload.chirurgien,
+            start: start.toISOString(),
+            end: end.toISOString(),
+            created: new Date().toISOString()
+        };
+
+        scheduleOperation(payload.salle, operationData);
     };
 
     const renderContent = () => {
@@ -155,7 +187,29 @@ const ManagementApp = () => {
                     />
                 );
             case 'planning':
-                return <SmartCalendar rooms={rooms} onSlotClick={() => { }} />;
+                return (
+                    <SmartCalendar
+                        rooms={rooms}
+                        onSlotClick={(room, hour, date) => {
+                            const timeStr = `${String(hour).padStart(2, '0')}:00`;
+                            openNewIntervention(extractRoomNumber(room), date, timeStr);
+                        }}
+                        onEventClick={(opData, room) => {
+                            if (opData.status === 'active' || opData.status === 'cleaning') {
+                                // Jump to cockpit for active stuff
+                                handleRoomClick(room);
+                                setActiveTab('cockpit');
+                            } else {
+                                // Show details for scheduled
+                                setSelectedOperation(opData);
+                                setSelectedRoomId(room.id);
+                                setShowDetails(true);
+                            }
+                        }}
+                        viewDate={viewDate}
+                        onDateChange={setViewDate}
+                    />
+                );
             case 'stats':
                 return <StatsOverview rooms={rooms} />;
             default:
@@ -251,6 +305,35 @@ const ManagementApp = () => {
                     onClose={() => setShowTimeline(false)}
                     onAddEvent={handleAddEvent}
                     onOpenChecklist={() => setShowChecklist(true)}
+                    onExtendOperation={extendOperation}
+                />
+            )}
+
+            {showCleaning && selectedRoom && (
+                <CleaningModal
+                    room={selectedRoom}
+                    onClose={() => setShowCleaning(false)}
+                    onFinish={finishCleaning}
+                />
+            )}
+
+            {showRoomDetails && selectedRoom && (
+                <RoomDetailsModal
+                    room={selectedRoom}
+                    onClose={() => setShowRoomDetails(false)}
+                    onOpenTraceability={() => {
+                        setShowRoomDetails(false);
+                        setShowTimeline(true);
+                    }}
+                    onUpdateRoom={setSingleRoom}
+                />
+            )}
+
+            {showDetails && selectedOperation && (
+                <OperationDetailsModal
+                    operation={selectedOperation}
+                    roomName={selectedRoom ? selectedRoom.name : 'Salle Inconnue'}
+                    onClose={() => setShowDetails(false)}
                 />
             )}
 
@@ -267,10 +350,10 @@ const ManagementApp = () => {
                 onClose={() => setShowNewModal(false)}
                 onSchedule={handleSchedule}
                 defaultSalle={prefillRoom}
+                defaultDate={prefillDate}
+                defaultTime={prefillTime}
+                rooms={rooms}
             />
-
-            {/* Voice Assistant */}
-            <VoiceAssistant />
         </div>
     );
 };
