@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bloc intelligent</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+        }
+
+        /* Scrollbar customisation */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+
+  <script type="module" crossorigin src="/op-room-manager/assets/index-BqDMc4xy.js"></script>
+  <link rel="stylesheet" crossorigin href="/op-room-manager/assets/index-ClRo6R_3.css">
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div id="root" class="h-full">
+        <div
+            style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; color: #64748b;">
+            <div style="margin-bottom: 20px;">Chargement du Bloc...</div>
+            <div id="debug-log"
+                style="color: #ef4444; font-size: 12px; max-width: 80%; word-break: break-all; white-space: pre-wrap; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            </div>
+        </div>
+    </div>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            const logBox = document.getElementById('debug-log');
+            if (logBox) {
+                logBox.innerText += `❌ ${msg}\nLine: ${line}\n`;
+                logBox.style.display = 'block';
+            }
+        };
+        window.addEventListener('unhandledrejection', function (event) {
+            const logBox = document.getElementById('debug-log');
+            if (logBox) {
+                logBox.innerText += `⚠️ Unhandled Promise Rejection: ${event.reason}\n`;
+                logBox.style.display = 'block';
+            }
+        });
+
+        // ASSET CHECKER
+        window.addEventListener('load', function () {
+            const logBox = document.getElementById('debug-log');
+            const scripts = document.querySelectorAll('script[type="module"]');
+            if (scripts.length === 0 && logBox) logBox.innerText += "⚠️ No module scripts found in DOM.\n";
+
+            scripts.forEach(s => {
+                if (s.src) {
+                    fetch(s.src)
+                        .then(res => {
+                            if (logBox) logBox.innerText += `📡 Fetch ${s.src.split('/').pop()}: ${res.status} ${res.statusText}\n`;
+                        })
+                        .catch(err => {
+                            if (logBox) logBox.innerText += `❌ Fetch failed: ${err}\n`;
+                        });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
